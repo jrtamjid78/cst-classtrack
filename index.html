@@ -76,7 +76,7 @@ footer{text-align:center;padding:20px;color:#7b8493;font-size:13px}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, setPersistence, browserLocalPersistence, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getDatabase, ref, get, set, update, remove, onValue, push } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 const firebaseConfig = {
@@ -90,15 +90,16 @@ const firebaseConfig = {
 };
 const ADMIN_EMAIL = "jrtamjid78@gmail.com";
 const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getDatabase(app);
+setPersistence(auth,browserLocalPersistence).catch(e=>console.error("Auth persistence:",e));
 const $=id=>document.getElementById(id);
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
 $("todayText").textContent="আজ: "+new Date().toLocaleDateString("bn-BD");
 $("sessionDate").value=today();
 let user=null, isAdmin=false, profile=null, active=null, subjects={};
 
-window.login=async()=>{try{await signInWithRedirect(auth,new GoogleAuthProvider())}catch(e){alert("লগইন করা যায়নি: "+e.message)}};
+window.login=async()=>{try{const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:"select_account"});await signInWithPopup(auth,provider);}catch(e){console.error(e);alert("Google Login হয়নি: "+(e.code||e.message)+"\nChrome-এ পপ-আপ বন্ধ থাকলে অনুমতি দিন।")}};
 window.logout=()=>signOut(auth);
-getRedirectResult(auth).catch(e=>console.error(e));
+
 
 function show(id,yes){$(id).classList.toggle("hidden",!yes)}
 function safe(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
