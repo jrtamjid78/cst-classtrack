@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1764e8">
+<meta name="description" content="CST ClassTrack Smart Student Attendance System">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>CST ClassTrack</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f1f4fa;color:#172033;font-family:Arial,sans-serif}
@@ -53,6 +58,15 @@ footer{text-align:center;padding:20px;color:#7b8493;font-size:13px}
 
 <section id="adminCard" class="card hidden">
  <h2>Admin Panel</h2><p class="badge">অনুমোদিত Admin</p>
+ <section id="superAdminTools" class="notice hidden">
+  <h3>নতুন Admin যোগ / বাদ</h3>
+  <p class="small">যাকে Admin বানাবে, তাকে আগে একবার Google দিয়ে এই ওয়েবসাইটে লগইন করতে হবে। Firebase Console → Authentication → Users থেকে তার UID কপি করে এখানে দাও। শুধু মূল Admin এই অংশ দেখতে পাবে।</p>
+  <input id="newAdminEmail" type="email" placeholder="নতুন Admin-এর Google ইমেইল (চেনার জন্য)">
+  <input id="newAdminUid" placeholder="Firebase Authentication-এর UID">
+  <button onclick="addAdmin()">Admin হিসেবে যোগ করো</button>
+  <div id="adminUsersList"></div>
+ </section>
+ <hr>
  <h3>হেডারের তারিখ পরিবর্তন</h3>
  <input id="headerDateInput" type="date">
  <button onclick="saveHeaderDate()">তারিখ প্রকাশ করো</button>
@@ -76,7 +90,7 @@ footer{text-align:center;padding:20px;color:#7b8493;font-size:13px}
  <h3>বর্তমান ক্লাসের Pending হাজিরা</h3><div id="pendingList">লোড হচ্ছে...</div>
 </section>
 </main>
-<footer>CST ClassTrack © 2026</footer>
+<footer>CST ClassTrack © 2026<br><span class="small">ইনস্টল করতে Chrome-এর মেনু থেকে “Install app” বা “Add to Home screen” নির্বাচন করো।</span></footer>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
@@ -93,6 +107,7 @@ const firebaseConfig = {
  appId: "1:114411916093:web:04a4d8b0303ab3bea51354"
 };
 const ADMIN_EMAIL = "jrtamjid78@gmail.com";
+const MAIN_ADMIN_UID = "iYUF8Sus7VbFiNishzuYqNBlwBb2";
 const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getDatabase(app);
 setPersistence(auth,browserLocalPersistence).catch(e=>console.error("Auth persistence:",e));
 const $=id=>document.getElementById(id);
@@ -196,21 +211,50 @@ window.approveRegistration=async uid=>{
 };
 window.rejectRegistration=async uid=>{if(confirm("অনুরোধ বাতিল করবেন?")){await update(ref(db,"registrationRequests/"+uid),{status:"rejected"});await loadRequests()}};
 
+async function loadAdminUsers(){
+ if(!user||user.uid!==MAIN_ADMIN_UID)return;
+ const snap=await get(ref(db,"admins")), data=snap.val()||{};
+ const rows=Object.entries(data);
+ $("adminUsersList").innerHTML=rows.length?rows.map(([uid,v])=>`<div class="item">${safe(v.email||"ইমেইল দেওয়া হয়নি")} <span class="small">UID: ${safe(uid)}</span> <button class="danger" onclick="removeAdmin('${uid}')">Admin বাদ দাও</button></div>`).join(""):"এখনো অতিরিক্ত Admin যোগ করা হয়নি।";
+}
+window.addAdmin=async()=>{
+ if(!user||user.uid!==MAIN_ADMIN_UID)return alert("শুধু মূল Admin নতুন Admin যোগ করতে পারবে।");
+ const email=$("newAdminEmail").value.trim(),uid=$("newAdminUid").value.trim();
+ if(!email||!uid)return alert("ইমেইল ও UID দুটোই লিখুন।");
+ if(uid===MAIN_ADMIN_UID)return alert("এটি মূল Admin-এর UID।");
+ try{await set(ref(db,"admins/"+uid),{email,addedAt:Date.now(),addedBy:user.uid});$("newAdminEmail").value="";$("newAdminUid").value="";await loadAdminUsers();alert("নতুন Admin যোগ হয়েছে। তাকে লগআউট করে আবার লগইন করতে বলুন।");}
+ catch(e){alert("Admin যোগ করা যায়নি: "+e.message+"\nFirebase Database Rules আপডেট করা আছে কি না দেখুন।")}
+};
+window.removeAdmin=async uid=>{
+ if(!user||user.uid!==MAIN_ADMIN_UID)return alert("শুধু মূল Admin বাদ দিতে পারবে।");
+ if(!confirm("এই ব্যক্তির Admin অনুমতি বাতিল করবেন?"))return;
+ try{await remove(ref(db,"admins/"+uid));await loadAdminUsers();}catch(e){alert("Admin বাদ দেওয়া যায়নি: "+e.message)}
+};
+
 onAuthStateChanged(auth,async u=>{
- user=u;isAdmin=!!(u&&u.email===ADMIN_EMAIL);
+ user=u;
+ isAdmin=false;
+ if(u){
+  if(u.uid===MAIN_ADMIN_UID || u.email===ADMIN_EMAIL)isAdmin=true;
+  else {try{const adminSnap=await get(ref(db,"admins/"+u.uid));isAdmin=adminSnap.exists();}catch(err){console.error("Admin check failed:",err)}}
+ }
  $("loginBtn").classList.toggle("hidden",!!u);$("logoutBtn").classList.toggle("hidden",!u);
  $("accountText").textContent=u?`লগইন: ${u.email}${isAdmin?" (Admin)":""}`:"লগইন করা হয়নি।";
  show("adminCard",isAdmin);
+ show("superAdminTools",!!(u&&u.uid===MAIN_ADMIN_UID));
  if(!u){profile=null;show("registerCard",false);show("profileCard",false);show("attendanceCard",false);show("listCard",false);return}
  try{
   await loadBase();await loadProfile();
   if(isAdmin){
    if(!profile){$("regRoll").value="";$("regName").value="";}
    await loadRequests();await loadPending();
+   if(user.uid===MAIN_ADMIN_UID)await loadAdminUsers();
   }
   if(profile){await loadBase();$("attendBtn").disabled=!(active?.open)}
  }catch(e){console.error(e);alert("তথ্য লোড হয়নি। Firebase Database Rules পরীক্ষা করুন।")}
 });
+
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(e=>console.warn("PWA service worker:",e)));}
 </script>
 </body>
 </html>
