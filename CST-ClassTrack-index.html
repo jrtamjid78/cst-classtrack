@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CST ClassTrack</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f1f4fa;color:#172033;font-family:Arial,sans-serif}
+header{background:linear-gradient(135deg,#1764e8,#103b91);color:#fff;padding:28px 20px;border-radius:0 0 24px 24px}
+header h1{margin:0;font-size:27px}header p{margin:8px 0 0}.container{max-width:760px;margin:auto;padding:16px}
+.card{background:#fff;padding:19px;border-radius:17px;margin:14px 0;box-shadow:0 4px 16px #0000000a}
+input,select{width:100%;padding:13px;margin:7px 0;border:1px solid #ccd4e0;border-radius:10px;font-size:16px}
+button{padding:13px 16px;border:0;border-radius:10px;background:#1764e8;color:#fff;font-weight:bold;font-size:16px;margin:6px 4px 6px 0}
+button.secondary{background:#52627a}button.danger{background:#b42318}button:disabled{opacity:.5}
+.small{font-size:13px;color:#647084}.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:120px}
+.item{padding:11px 0;border-bottom:1px solid #edf0f4}.badge{display:inline-block;padding:4px 8px;border-radius:20px;background:#e8f1ff;color:#174ea6;font-size:12px}
+.hidden{display:none!important}.notice{padding:11px;background:#fff6df;border-radius:10px;color:#775500}
+footer{text-align:center;padding:20px;color:#7b8493;font-size:13px}
+</style>
+</head>
+<body>
+<header><h1>CST ClassTrack</h1><p>Smart Student Attendance System</p><p id="todayText"></p></header>
+<main class="container">
+<section class="card">
+ <div id="accountText">লগইন করা হয়নি।</div>
+ <button id="loginBtn" onclick="login()">Google দিয়ে Login</button>
+ <button id="logoutBtn" class="secondary hidden" onclick="logout()">Logout</button>
+ <p class="small">শিক্ষার্থী ও Admin—দুজনেই Google দিয়ে লগইন করবে। Admin-এর নিজের হাজিরা সাধারণ হাজিরা ফর্ম থেকেই হবে।</p>
+</section>
+
+<section id="registerCard" class="card hidden">
+ <h3>শিক্ষার্থী নিবন্ধন</h3>
+ <p>প্রথমবার নিজের রোল ও নাম জমা দাও। Admin অনুমোদন করলে হাজিরা দিতে পারবে।</p>
+ <input id="regRoll" type="number" min="1" placeholder="রোল নম্বর">
+ <input id="regName" maxlength="60" placeholder="সম্পূর্ণ নাম">
+ <button onclick="sendRegistration()">নিবন্ধনের অনুরোধ পাঠাও</button>
+ <div id="regStatus" class="small"></div>
+</section>
+
+<section id="profileCard" class="card hidden">
+ <div id="profileInfo"></div>
+</section>
+
+<section id="attendanceCard" class="card hidden">
+ <h3>নিজের উপস্থিতি দাও</h3>
+ <div id="activeInfo" class="notice">এখন কোনো ক্লাসের হাজিরা চালু নেই।</div>
+ <button id="attendBtn" onclick="submitOwnAttendance()" disabled>আমি উপস্থিত</button>
+</section>
+
+<section id="listCard" class="card hidden">
+ <h3>এই ক্লাসের হাজিরা</h3><div id="attendanceList">লোড হচ্ছে...</div>
+</section>
+
+<section id="adminCard" class="card hidden">
+ <h2>Admin Panel</h2><p class="badge">অনুমোদিত Admin</p>
+ <h3>হেডারের তারিখ পরিবর্তন</h3>
+ <input id="headerDateInput" type="date">
+ <button onclick="saveHeaderDate()">তারিখ প্রকাশ করো</button>
+ <hr>
+ <h3>বিষয় পরিচালনা</h3>
+ <div class="row"><input id="subjectName" placeholder="নতুন বিষয়ের নাম"><button onclick="addSubject()">বিষয় যোগ</button></div>
+ <div id="subjectList"></div>
+ <hr>
+ <h3>হাজিরা চালু / বন্ধ</h3>
+ <label>হাজিরার তারিখ</label><input id="sessionDate" type="date">
+ <label>বিষয় নির্বাচন</label><select id="sessionSubject"></select>
+ <div class="row"><button onclick="openSession()">এই ক্লাসের হাজিরা চালু</button><button class="danger" onclick="closeSession()">হাজিরা বন্ধ</button></div>
+ <hr>
+ <h3>নিবন্ধনের অনুরোধ</h3><div id="requestsList">লোড হচ্ছে...</div>
+ <hr>
+ <h3>অন্য শিক্ষার্থীর হাজিরা (শুধু Admin)</h3>
+ <input id="adminRoll" type="number" min="1" placeholder="শিক্ষার্থীর রোল">
+ <input id="adminName" placeholder="শিক্ষার্থীর নাম">
+ <button onclick="adminAddAttendance()">হাজিরা যোগ করো</button>
+ <hr>
+ <h3>বর্তমান ক্লাসের Pending হাজিরা</h3><div id="pendingList">লোড হচ্ছে...</div>
+</section>
+</main>
+<footer>CST ClassTrack © 2026</footer>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, setPersistence, browserLocalPersistence, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getDatabase, ref, get, set, update, remove, onValue, push } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+
+const firebaseConfig = {
+ apiKey: "AIzaSyDNuG6_kwNWm48_JPUVSXdKP3bLWGM-BBU",
+ authDomain: "cst-classtrack.firebaseapp.com",
+ databaseURL: "https://cst-classtrack-default-rtdb.asia-southeast1.firebasedatabase.app",
+ projectId: "cst-classtrack",
+ storageBucket: "cst-classtrack.firebasestorage.app",
+ messagingSenderId: "114411916093",
+ appId: "1:114411916093:web:04a4d8b0303ab3bea51354"
+};
+const ADMIN_EMAIL = "jrtamjid78@gmail.com";
+const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getDatabase(app);
+setPersistence(auth,browserLocalPersistence).catch(e=>console.error("Auth persistence:",e));
+const $=id=>document.getElementById(id);
+const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
+$("todayText").textContent="তারিখ লোড হচ্ছে...";
+$("sessionDate").value=today();
+let user=null, isAdmin=false, profile=null, active=null, subjects={};
+
+window.login=async()=>{try{const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:"select_account"});await signInWithPopup(auth,provider);}catch(e){console.error(e);alert("Google Login হয়নি: "+(e.code||e.message)+"\nChrome-এ পপ-আপ বন্ধ থাকলে অনুমতি দিন।")}};
+window.logout=()=>signOut(auth);
+
+
+function show(id,yes){$(id).classList.toggle("hidden",!yes)}
+function safe(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+window.saveHeaderDate=async()=>{
+ if(!isAdmin)return alert("শুধু Admin তারিখ পরিবর্তন করতে পারবে");
+ const date=$("headerDateInput").value;
+ if(!date)return alert("তারিখ নির্বাচন করুন");
+ try{
+  await set(ref(db,"settings/headerDate"),date);
+  $("todayText").textContent="আজ: "+new Date(date+"T00:00:00").toLocaleDateString("bn-BD");
+  alert("হেডারের তারিখ পরিবর্তন হয়েছে");
+ }catch(e){alert("তারিখ পরিবর্তন হয়নি: "+e.message)}
+};
+
+async function loadBase(){
+ const [s,a,h]=await Promise.all([get(ref(db,"subjects")),get(ref(db,"settings/activeSession")),get(ref(db,"settings/headerDate"))]);
+ subjects=s.val()||{};active=a.val()||null;
+ const savedHeaderDate=h.val();
+ const shownDate=savedHeaderDate || today();
+ $("todayText").textContent="আজ: "+new Date(shownDate+"T00:00:00").toLocaleDateString("bn-BD");
+ if(isAdmin && $("headerDateInput")) $("headerDateInput").value=shownDate;
+ renderSubjects();
+ const open=!!(active&&active.open&&active.date&&active.subjectId&&subjects[active.subjectId]);
+ $("activeInfo").textContent=open?`চালু আছে: ${subjects[active.subjectId].name} | তারিখ: ${active.date}`:"এখন কোনো ক্লাসের হাজিরা চালু নেই।";
+ $("attendBtn").disabled=!open||!profile;
+ if(open){loadAttendance();}else{show("listCard",false)}
+}
+function renderSubjects(){
+ const entries=Object.entries(subjects);
+ $("subjectList").innerHTML=entries.length?entries.map(([id,s])=>`<div class="item">${safe(s.name)} <button class="secondary" onclick="renameSubject('${id}')">নাম বদল</button><button class="danger" onclick="deleteSubject('${id}')">মুছুন</button></div>`).join(""):"কোনো বিষয় যোগ করা হয়নি।";
+ $("sessionSubject").innerHTML=entries.map(([id,s])=>`<option value="${id}">${safe(s.name)}</option>`).join("");
+}
+window.addSubject=async()=>{const name=$("subjectName").value.trim();if(!name)return alert("বিষয়ের নাম লিখুন");await set(push(ref(db,"subjects")),{name,createdAt:Date.now()});$("subjectName").value="";await loadBase()};
+window.renameSubject=async id=>{const old=subjects[id]?.name||"";const name=prompt("নতুন নাম লিখুন",old);if(name&&name.trim()){await update(ref(db,"subjects/"+id),{name:name.trim()});await loadBase()}};
+window.deleteSubject=async id=>{if(confirm("বিষয়টি মুছবেন? পুরোনো হাজিরার রেকর্ড থাকবে।")){await remove(ref(db,"subjects/"+id));await loadBase()}};
+window.openSession=async()=>{const subjectId=$("sessionSubject").value,date=$("sessionDate").value;if(!subjectId||!date)return alert("তারিখ ও বিষয় নির্বাচন করুন");await set(ref(db,"settings/activeSession"),{subjectId,date,open:true,openedBy:user.uid,openedAt:Date.now()});await loadBase()};
+window.closeSession=async()=>{if(confirm("বর্তমান হাজিরা বন্ধ করবেন?")){await update(ref(db,"settings/activeSession"),{open:false,closedAt:Date.now()});await loadBase()}};
+
+window.sendRegistration=async()=>{
+ if(!user)return;const roll=$("regRoll").value.trim(),name=$("regName").value.trim();
+ if(!/^[1-9][0-9]*$/.test(roll)||!name)return alert("সঠিক রোল ও নাম লিখুন");
+ try{await set(ref(db,"registrationRequests/"+user.uid),{uid:user.uid,email:user.email,roll,name,status:"pending",createdAt:Date.now()});$("regStatus").textContent="অনুরোধ পাঠানো হয়েছে। Admin অনুমোদনের অপেক্ষা করুন।";}catch(e){alert("অনুরোধ পাঠানো যায়নি: "+e.message)}
+};
+async function loadProfile(){
+ if(!user)return;const snap=await get(ref(db,"users/"+user.uid));profile=snap.val();
+ if(profile){show("registerCard",false);show("profileCard",true);$("profileInfo").innerHTML=`নাম: <b>${safe(profile.name)}</b> | রোল: <b>${safe(profile.roll)}</b> <span class="badge">অনুমোদিত</span>`;show("attendanceCard",true)}
+ else{
+  show("profileCard",false);show("attendanceCard",false);
+  if(isAdmin){show("registerCard",true);$("regStatus").textContent="Admin-এর নিজের রোল ও নাম একবার সেট করুন।";}
+  else{show("registerCard",true);const req=await get(ref(db,"registrationRequests/"+user.uid));if(req.exists())$("regStatus").textContent="অনুরোধ Admin-এর অনুমোদনের অপেক্ষায় আছে।";}
+ }
+}
+async function loadAttendance(){
+ if(!active?.open||!profile)return;
+ show("listCard",true);
+ const snap=await get(ref(db,`attendance/${active.date}/${active.subjectId}`)),data=snap.val()||{};
+ const rows=Object.entries(data);
+ $("attendanceList").innerHTML=rows.length?rows.filter(([,v])=>v.status==="approved").map(([roll,v])=>`<div class="item">✅ ${safe(roll)} — ${safe(v.name)}</div>`).join("")||"এখনো অনুমোদিত হাজিরা নেই।":"এখনো কেউ হাজিরা দেয়নি।";
+}
+window.submitOwnAttendance=async()=>{
+ if(!user||!profile||!active?.open)return alert("হাজিরা চালু নেই বা প্রোফাইল অনুমোদিত নয়");
+ const path=`attendance/${active.date}/${active.subjectId}/${profile.roll}`;
+ try{const old=await get(ref(db,path));if(old.exists())return alert("এই রোলে ইতিমধ্যে হাজিরা জমা হয়েছে");await set(ref(db,path),{uid:user.uid,roll:profile.roll,name:profile.name,status:"pending",createdAt:Date.now()});alert("হাজিরা জমা হয়েছে। Admin অনুমোদনের পর চূড়ান্ত হবে।");await loadAttendance();if(isAdmin)await loadPending()}catch(e){alert("হাজিরা জমা হয়নি: "+e.message)}
+};
+window.adminAddAttendance=async()=>{
+ if(!isAdmin||!active?.open)return alert("Admin login এবং চালু ক্লাস প্রয়োজন");
+ const roll=$("adminRoll").value.trim(),name=$("adminName").value.trim();if(!roll||!name)return alert("রোল ও নাম লিখুন");
+ const path=`attendance/${active.date}/${active.subjectId}/${roll}`;
+ try{const old=await get(ref(db,path));if(old.exists())return alert("এই রোলে হাজিরা আগে থেকেই আছে");await set(ref(db,path),{uid:user.uid,roll,name,status:"approved",createdAt:Date.now(),addedByAdmin:true});$("adminRoll").value="";$("adminName").value="";await loadAttendance();await loadPending()}catch(e){alert("যোগ করা যায়নি: "+e.message)}
+};
+async function loadPending(){
+ if(!isAdmin||!active?.date||!active?.subjectId){$("pendingList").textContent="কোনো চালু ক্লাস নেই।";return}
+ const snap=await get(ref(db,`attendance/${active.date}/${active.subjectId}`)),data=snap.val()||{};
+ const rows=Object.entries(data).filter(([,v])=>v.status==="pending");
+ $("pendingList").innerHTML=rows.length?rows.map(([roll,v])=>`<div class="item">${safe(roll)} — ${safe(v.name)} <button onclick="approve('${roll}')">Approve</button><button class="danger" onclick="reject('${roll}')">Reject</button></div>`).join(""):"Pending হাজিরা নেই।";
+}
+window.approve=async roll=>{if(!isAdmin||!active)return;await update(ref(db,`attendance/${active.date}/${active.subjectId}/${roll}`),{status:"approved",approvedBy:user.uid,approvedAt:Date.now()});await loadPending();await loadAttendance()};
+window.reject=async roll=>{if(!isAdmin||!active)return;if(confirm("এই হাজিরা বাতিল করবেন?")){await remove(ref(db,`attendance/${active.date}/${active.subjectId}/${roll}`));await loadPending();await loadAttendance()}};
+async function loadRequests(){
+ if(!isAdmin)return;const snap=await get(ref(db,"registrationRequests")),data=snap.val()||{};
+ const rows=Object.entries(data).filter(([,v])=>v.status==="pending");
+ $("requestsList").innerHTML=rows.length?rows.map(([uid,v])=>`<div class="item">${safe(v.name)} | রোল ${safe(v.roll)} | ${safe(v.email)} <button onclick="approveRegistration('${uid}')">Approve</button><button class="danger" onclick="rejectRegistration('${uid}')">Reject</button></div>`).join(""):"নতুন অনুরোধ নেই।";
+}
+window.approveRegistration=async uid=>{
+ if(!isAdmin)return;const snap=await get(ref(db,"registrationRequests/"+uid));if(!snap.exists())return;
+ const v=snap.val();const existing=await get(ref(db,"users"));const all=existing.val()||{};
+ if(Object.values(all).some(p=>String(p.roll)===String(v.roll)))return alert("এই রোল ইতিমধ্যে অন্য অ্যাকাউন্টে যুক্ত আছে");
+ await set(ref(db,"users/"+uid),{name:v.name,roll:String(v.roll),email:v.email,approvedAt:Date.now(),approvedBy:user.uid});
+ await update(ref(db,"registrationRequests/"+uid),{status:"approved"});await loadRequests();
+};
+window.rejectRegistration=async uid=>{if(confirm("অনুরোধ বাতিল করবেন?")){await update(ref(db,"registrationRequests/"+uid),{status:"rejected"});await loadRequests()}};
+
+onAuthStateChanged(auth,async u=>{
+ user=u;isAdmin=!!(u&&u.email===ADMIN_EMAIL);
+ $("loginBtn").classList.toggle("hidden",!!u);$("logoutBtn").classList.toggle("hidden",!u);
+ $("accountText").textContent=u?`লগইন: ${u.email}${isAdmin?" (Admin)":""}`:"লগইন করা হয়নি।";
+ show("adminCard",isAdmin);
+ if(!u){profile=null;show("registerCard",false);show("profileCard",false);show("attendanceCard",false);show("listCard",false);return}
+ try{
+  await loadBase();await loadProfile();
+  if(isAdmin){
+   if(!profile){$("regRoll").value="";$("regName").value="";}
+   await loadRequests();await loadPending();
+  }
+  if(profile){await loadBase();$("attendBtn").disabled=!(active?.open)}
+ }catch(e){console.error(e);alert("তথ্য লোড হয়নি। Firebase Database Rules পরীক্ষা করুন।")}
+});
+</script>
+</body>
+</html>
